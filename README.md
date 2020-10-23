@@ -66,7 +66,7 @@ We based the design of our feature-based visual odometry on their method and our
 
 ### [YOLOv4](https://github.com/AlexeyAB/darknet) ###
 We integrated tiny YOLOv4 in our pipeline for improving robustness in dynamic scenes by detecting persons. To see how to enable or disable its use please refer 
-to [this section](### Node ###).
+to [this section](#node).
 
 ## Licenses ##
 SupersurfelFusion is released under a GPLv3 license (see `supersurfel_fusion/licenses/LICENSE-SupersurfelFusion.txt`).
