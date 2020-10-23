@@ -52,7 +52,7 @@ This dependency can be resolved by installing the following package: libsuitespa
 
 Our implementation integrates parts of codes from external libraries.
 
-### [ORB-SLAM2](https://github.com/raulmur/ORB-SLAM2) ###
+### [ORB-SLAM2](https://github.com/raulmur/ORB_SLAM2) ###
 For features extraction and associated descriptors computation.
 
 ### [GMS-Feature-Matcher](https://github.com/JiawangBian/GMS-Feature-Matcher) ###
