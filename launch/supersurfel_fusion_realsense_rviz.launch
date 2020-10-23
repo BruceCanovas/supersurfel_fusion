@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+
+<launch>
+    
+    <include file="$(find realsense2_camera)/launch/rs_aligned_depth.launch"/>
+    <!--<include file="$(find realsense2_camera)/launch/rs_camera.launch" >
+      <arg name="align_depth" value="true"/>
+      <arg name="filters"     value="pointcloud"/>
+    </include>-->
+          
+    <node if="true" pkg="supersurfel_fusion" type="supersurfel_fusion_node" name="supersurfel_fusion_node" output="screen" clear_params="true" required="true">
+        <remap from="/camera_info" to="/camera/color/camera_info"/>
+        <remap from="/image_color" to="/camera/color/image_raw"/>
+        <remap from="/image_depth" to="/camera/aligned_depth_to_color/image_raw"/>
+      
+        <param name="cell_size" value="16"/>
+        <param name="seg_iter" value="8"/>
+        <param name="lambda_pos" value="10.0"/>
+        <param name="lambda_bound" value="1000.0"/>
+        <param name="lambda_size" value="1000.0"/>
+        <param name="lambda_disp" value="100000000.0"/>
+        <param name="thresh_disp" value="0.001"/>
+        <param name="use_ransac" value="true"/>
+        <param name="nb_samples" value="16"/>
+        <param name="filter_iter" value="3"/>
+        <param name="filter_alpha" value="0.1"/>
+        <param name="filter_beta" value="1.0"/>
+        <param name="filter_threshold" value="0.05"/>
+      
+        <param name="range_min" value="0.2"/>
+        <param name="range_max" value="5.0"/>
+        <param name="nb_supersurfels_max" value="50000"/>
+        <param name="delta_t" value="10"/>
+        <param name="conf_thresh_scale" value="6.0"/>
+        
+        <param name="icp_iter" value="6"/>
+        <param name="icp_cov_thresh" value="0.05"/>
+        
+        <param name="untracked_threshold" value="10"/>
+
+        <param name="nb_features" value="500"/>
+        <param name="features_scale_factor" value="1.2"/>
+        <param name="features_nb_levels" value="8"/>
+        <param name="ini_th_fast" value="15"/>
+        <param name="min_th_fast" value="5"/>
+      
+        <param name="map_frame_id" value="map"/>
+        <param name="display" value="false"/>
+        
+        <param name="enable_loop_closure" value="true"/>
+	<param name="enable_mod" value="true"/>
+                
+        <param name="save_model" value="false"/>
+        <param name="model_file" value="$(find supersurfel_fusion)/model/model.txt"/>
+
+	<param name="depth_scale" value="0.001"/>
+        
+        <param name="use_yolo" value="false"/>
+        <param name="yolo_names_file" value="$(find supersurfel_fusion)/config/coco.names"/>
+        <param name="yolo_config_file" value="$(find supersurfel_fusion)/config/yolov4-tiny.cfg"/>
+        <param name="yolo_weights_file" value="$(find supersurfel_fusion)/config/yolov4-tiny.weights"/>
+    </node>
+    
+    <node pkg="rviz" type="rviz" name="rviz" output="screen" args="-d $(find supersurfel_fusion)/config/conf_mod.rviz"/>
+  
+</launch>

@@ -1,0 +1,6 @@
+SupersurfelFusion is released under a GPLv3 license (see supersurfel_fusion/licenses/LICENSE-SupersurfelFusion.txt).
+
+SupersurfelFusion includes differents third-party open-source software, which themselves include third-party open-source software. Each of these components have their own license.
+
+You can find the licenses in the repository supersurfel_fusion/licenses/.
+
