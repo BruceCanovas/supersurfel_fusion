@@ -166,3 +166,4 @@ There are differents parameters you can play with in the different launch files.
 * Use cuda streams when possible
 * Minimize thread divergence
 * Edit superpixel code to use reduction instead of atomic operations
+* Optimize for pointer aliasing
