@@ -65,8 +65,6 @@ __device__ inline void operator+=(MotionTrackingData& a, const MotionTrackingDat
     #pragma unroll
     for(int i = 0; i < 6; i++)
         a.Jtr[i] += b.Jtr[i];
-
-    //a.r += b.r;
 }
 
 __device__ inline void atomicAdd(MotionTrackingData* a, const MotionTrackingData& b)
@@ -78,8 +76,6 @@ __device__ inline void atomicAdd(MotionTrackingData* a, const MotionTrackingData
     #pragma unroll
     for(int i = 0; i < 6; i++)
         ::atomicAdd((float*) &(a->Jtr[i]), b.Jtr[i]);
-
-    //::atomicAdd((float*) &(a->r), b.r);
 }
 
 template <int BLOCK_SIZE>
@@ -105,8 +101,6 @@ __global__ void buildSymmetricPoint2PlaneSystem(MotionTrackingData* system,
     #pragma unroll
     for(int i = 0; i < 6; i++)
         sh_data[tid].Jtr[i] = 0.0f;
-
-    //sh_data[tid].r = 0.0f;
 
     if(id < nb_pairs)
     {
@@ -156,13 +150,6 @@ __global__ void buildSymmetricPoint2PlaneSystem(MotionTrackingData* system,
         sh_data[tid].JtJ[19] = w * (x1[4] * x1[5] + x2[4] * x2[5]);
 
         sh_data[tid].JtJ[20] = w * (x1[5] * x1[5] + x2[5] * x2[5]);
-
-        //sh_data[tid].r = dot(source_positions[id] - target_positions[id], ns + nt) * dot(source_positions[id] - target_positions[id], ns + nt);
-        //sh_data[tid].r = dot(source_positions[id] - target_positions[id], ns) * dot(source_positions[id] - target_positions[id], ns);
-        //sh_data[tid].r = dot(target_positions[id] - source_positions[id], nt) * dot(target_positions[id] - source_positions[id], nt);
-        //float3 diff =  target_positions[id] - source_positions[id];
-        //sh_data[tid].r = dot(diff, diff);
-
     }
 
     __syncthreads();
@@ -172,6 +159,65 @@ __global__ void buildSymmetricPoint2PlaneSystem(MotionTrackingData* system,
     if(tid == 0)
         atomicAdd(system, sh_data[tid]);
 }
+
+__inline__ __device__ MotionTrackingData warpReduceSum(MotionTrackingData mtd)
+{
+    for(int offset = warpSize/2; offset > 0; offset /= 2)
+    {
+        #pragma unroll
+        for(int i = 0; i < 21; i++)
+            mtd.JtJ[i] += __shfl_down(mtd.JtJ[i], offset);
+
+        #pragma unroll
+        for(int i = 0; i < 6; i++)
+            mtd.Jtr[i] += __shfl_down(mtd.Jtr[i], offset);
+    }
+
+    return mtd;
+}
+
+__inline__ __device__ MotionTrackingData blockReduceSum(MotionTrackingData mtd)
+{
+    static __shared__ MotionTrackingData shared[32];
+    int lane = threadIdx.x % warpSize;
+    int wid = threadIdx.x / warpSize;
+
+    mtd = warpReduceSum(mtd);
+
+    if(lane == 0)
+        shared[wid] = mtd;
+
+    __syncthreads();
+
+
+     if(threadIdx.x < blockDim.x / warpSize)
+         mtd = shared[lane];
+     else
+     {
+         #pragma unroll
+         for(int i = 0; i < 21; i++)
+             mtd.JtJ[i] = 0.0f;
+
+         #pragma unroll
+         for(int i = 0; i < 6; i++)
+             mtd.Jtr[i] = 0.0f;
+     }
+
+    if(wid == 0)
+        mtd = warpReduceSum(mtd);
+
+    return mtd;
+}
+
+__global__ void buildSymmetricPoint2PlaneSystem2(MotionTrackingData* system,
+                                                 const float3* source_positions,
+                                                 const float3* source_normals,
+                                                 const float3* target_positions,
+                                                 const float3* target_normals,
+                                                 float3 source_centroid,
+                                                 float3 target_centroid,
+                                                 float scale,
+                                                 int nb_pairs);
 
 } // supersurfel_fusion
 

@@ -101,4 +101,78 @@ __global__ void makeCorrespondences(const float3* source_positions,
     }
 }
 
+__global__ void buildSymmetricPoint2PlaneSystem2(MotionTrackingData* system,
+                                                 const float3* source_positions,
+                                                 const float3* source_normals,
+                                                 const float3* target_positions,
+                                                 const float3* target_normals,
+                                                 float3 source_centroid,
+                                                 float3 target_centroid,
+                                                 float scale,
+                                                 int nb_pairs)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    MotionTrackingData mtd_sum;
+    #pragma unroll
+    for(int k = 0; k < 21; k++)
+        mtd_sum.JtJ[k] = 0.0f;
+
+    #pragma unroll
+    for(int k = 0; k < 6; k++)
+        mtd_sum.Jtr[k] = 0.0f;
+
+    if(i < nb_pairs)
+    {
+        float3 ps = scale * (source_positions[i] - source_centroid);
+        float3 pt = scale * (target_positions[i] - target_centroid);
+        float3 ns = normalize(source_normals[i]);
+        float3 nt = normalize(target_normals[i]);
+
+        float3 d = pt - ps;
+        float3 c1 = cross(pt, ns);
+        float3 c2 = cross(ps, nt);
+        float dn1 = dot(d, ns);
+        float dn2 = dot(d, nt);
+
+        float x1[6] = {c1.x, c1.y, c1.z, ns.x, ns.y, ns.z};
+        float x2[6] = {c2.x, c2.y, c2.z, nt.x, nt.y, nt.z};
+
+        for(int j = 0; j < 6; j++)
+            mtd_sum.Jtr[j] = dn1 * x1[j] + dn2 * x2[j];
+
+        mtd_sum.JtJ[0] = x1[0] * x1[0] + x2[0] * x2[0];
+        mtd_sum.JtJ[1] = x1[0] * x1[1] + x2[0] * x2[1];
+        mtd_sum.JtJ[2] = x1[0] * x1[2] + x2[0] * x2[2];
+        mtd_sum.JtJ[3] = x1[0] * x1[3] + x2[0] * x2[3];
+        mtd_sum.JtJ[4] = x1[0] * x1[4] + x2[0] * x2[4];
+        mtd_sum.JtJ[5] = x1[0] * x1[5] + x2[0] * x2[5];
+
+        mtd_sum.JtJ[6] = x1[1] * x1[1] + x2[1] * x2[1];
+        mtd_sum.JtJ[7] = x1[1] * x1[2] + x2[1] * x2[2];
+        mtd_sum.JtJ[8] = x1[1] * x1[3] + x2[1] * x2[3];
+        mtd_sum.JtJ[9] = x1[1] * x1[4] + x2[1] * x2[4];
+        mtd_sum.JtJ[10] = x1[1] * x1[5] + x2[1] * x2[5];
+
+        mtd_sum.JtJ[11] = x1[2] * x1[2] + x2[2] * x2[2];
+        mtd_sum.JtJ[12] = x1[2] * x1[3] + x2[2] * x2[3];
+        mtd_sum.JtJ[13] = x1[2] * x1[4] + x2[2] * x2[4];
+        mtd_sum.JtJ[14] = x1[2] * x1[5] + x2[2] * x2[5];
+
+        mtd_sum.JtJ[15] = x1[3] * x1[3] + x2[3] * x2[3];
+        mtd_sum.JtJ[16] = x1[3] * x1[4] + x2[3] * x2[4];
+        mtd_sum.JtJ[17] = x1[3] * x1[5] + x2[3] * x2[5];
+
+        mtd_sum.JtJ[18] = x1[4] * x1[4] + x2[4] * x2[4];
+        mtd_sum.JtJ[19] = x1[4] * x1[5] + x2[4] * x2[5];
+
+        mtd_sum.JtJ[20] = x1[5] * x1[5] + x2[5] * x2[5];
+    }
+
+    mtd_sum = blockReduceSum(mtd_sum);
+
+    if(threadIdx.x == 0)
+        atomicAdd(system, mtd_sum);
+}
+
 }

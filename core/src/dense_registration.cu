@@ -176,15 +176,26 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
         scale = std::sqrt(scale / (2.0f * nb_pairs));
         scale = 1.0f / scale;
 
-        buildSymmetricPoint2PlaneSystem<128><<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
-                                                                                  thrust::raw_pointer_cast(matched_source_positions.data()),
-                                                                                  thrust::raw_pointer_cast(matched_source_normals.data()),
-                                                                                  thrust::raw_pointer_cast(matched_target_positions.data()),
-                                                                                  thrust::raw_pointer_cast(matched_target_normals.data()),
-                                                                                  source_centroid,
-                                                                                  target_centroid,
-                                                                                  scale,
-                                                                                  nb_pairs);
+//        buildSymmetricPoint2PlaneSystem<128><<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
+//                                                                                  thrust::raw_pointer_cast(matched_source_positions.data()),
+//                                                                                  thrust::raw_pointer_cast(matched_source_normals.data()),
+//                                                                                  thrust::raw_pointer_cast(matched_target_positions.data()),
+//                                                                                  thrust::raw_pointer_cast(matched_target_normals.data()),
+//                                                                                  source_centroid,
+//                                                                                  target_centroid,
+//                                                                                  scale,
+//                                                                                  nb_pairs);
+        buildSymmetricPoint2PlaneSystem2<<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
+                                                                              thrust::raw_pointer_cast(matched_source_positions.data()),
+                                                                              thrust::raw_pointer_cast(matched_source_normals.data()),
+                                                                              thrust::raw_pointer_cast(matched_target_positions.data()),
+                                                                              thrust::raw_pointer_cast(matched_target_normals.data()),
+                                                                              source_centroid,
+                                                                              target_centroid,
+                                                                              scale,
+                                                                              nb_pairs);
+        cudaDeviceSynchronize();
+        CudaCheckError();
         cudaDeviceSynchronize();
         CudaCheckError();
 
