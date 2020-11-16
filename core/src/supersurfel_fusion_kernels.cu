@@ -291,11 +291,11 @@ __global__ void fuseSupersurfels(const float3* frame_positions,
 
                 //float dist = length(model_position - frame_position);
                 float lab_dist = length(model_lab - frame_lab);
-                float delta_norm = acosf(dot(model_normal, frame_normal)) * 180.0f / PI;
+                float delta_norm = fabsf(dot(model_normal, frame_normal));
                 float dist_to_plane = 0.5f * (fabsf(dot(frame_position, model_normal) - dot(model_position, model_normal)) +
                                               fabsf(dot(model_position, frame_normal) - dot(frame_position, frame_normal)));
 
-                if(lab_dist < 20.0f && delta_norm < 30.0f && dist_to_plane < 0.05f)
+                if(lab_dist < 20.0f && delta_norm > 0.8f && dist_to_plane < 0.05f)
                 {
                     matched[frame_id] = true;
 
@@ -595,11 +595,11 @@ __global__ void findBestMatches(const float3* frame_positions,
 
                 float dist = length(model_position - frame_position);
                 float lab_dist = length(model_lab - frame_lab);
-                float delta_norm = acosf(dot(model_normal, frame_normal)) * 180.0f / PI;
+                float delta_norm = fabsf(dot(model_normal, frame_normal));
                 //float dist_to_plane = 0.5f * (fabsf(dot(frame_position, model_normal) - dot(model_position, model_normal)) +
                 //                              fabsf(dot(model_position, frame_normal) - dot(frame_position, frame_normal)));
 
-                if(lab_dist < 20.0f && delta_norm < 30.0f && dist < 0.05/* && dist_to_plane < 0.05f*/)
+                if(lab_dist < 20.0f && delta_norm > 0.8f && dist < 0.05/* && dist_to_plane < 0.05f*/)
                 {
                     matched[frame_id] = true;
 
