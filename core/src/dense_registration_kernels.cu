@@ -81,7 +81,7 @@ __global__ void makeCorrespondences(const float3* source_positions,
                     float3 t_position = make_float3(t_depth * (u - cx) / fx, t_depth * (v - cy) / fy, t_depth);
 
                     if(dist_color < 20.0f &&
-                       length(p_view - t_position) < 0.05f  &&
+                       length(p_view - t_position) < 0.1f  &&
                        fabsf(dot(s_normal, t_normal)) > 0.8f)
                     {
                         matched_source_positions[source_id] = p_view;
