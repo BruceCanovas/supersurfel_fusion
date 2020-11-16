@@ -82,7 +82,7 @@ __global__ void makeCorrespondences(const float3* source_positions,
 
                     if(dist_color < 20.0f &&
                        length(p_view - t_position) < 0.05f  &&
-                       acosf(dot(s_normal, t_normal)) * 180.0f / PI < 30.0f)
+                       fabsf(dot(s_normal, t_normal)) > 0.8f)
                     {
                         matched_source_positions[source_id] = p_view;
                         matched_source_normals[source_id] = s_normal;
