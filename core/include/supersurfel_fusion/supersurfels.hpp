@@ -82,13 +82,13 @@ struct Supersurfels
 
     void memset(size_t length)
     {
-        cudaMemset(thrust::raw_pointer_cast(&positions[0]), 0.0f, length*sizeof(float3));
-        cudaMemset(thrust::raw_pointer_cast(&colors[0]), 0.0f, length*sizeof(float3));
+        cudaMemset(thrust::raw_pointer_cast(&positions[0]), 0, length*sizeof(float3));
+        cudaMemset(thrust::raw_pointer_cast(&colors[0]), 0, length*sizeof(float3));
         cudaMemset(thrust::raw_pointer_cast(&stamps[0]), 0, length*sizeof(int2));
-        cudaMemset(thrust::raw_pointer_cast(&orientations[0]), 0.0f, length*sizeof(Mat33));
-        cudaMemset(thrust::raw_pointer_cast(&shapes[0]), 0.0f, length*sizeof(Cov3));
-        cudaMemset(thrust::raw_pointer_cast(&dims[0]), 0.0f, length*sizeof(float2));
-        cudaMemset(thrust::raw_pointer_cast(&confidences[0]), 0.0f, length*sizeof(float));
+        cudaMemset(thrust::raw_pointer_cast(&orientations[0]), 0, length*sizeof(Mat33));
+        cudaMemset(thrust::raw_pointer_cast(&shapes[0]), 0, length*sizeof(Cov3));
+        cudaMemset(thrust::raw_pointer_cast(&dims[0]), 0, length*sizeof(float2));
+        cudaMemset(thrust::raw_pointer_cast(&confidences[0]), 0, length*sizeof(float));
     }
 }; // struct Supersurfels
 
