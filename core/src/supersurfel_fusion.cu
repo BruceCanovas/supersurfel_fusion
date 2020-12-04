@@ -160,9 +160,6 @@ void SupersurfelFusion::initialize(const CamParam& cam_param,
 
     stamp = 0;
 
-    sobelFilterX = cv::cuda::createSobelFilter(CV_32FC1, CV_32FC1, 1, 0, 3, 1);
-    sobelFilterY = cv::cuda::createSobelFilter(CV_32FC1, CV_32FC1, 0, 1, 3, 1);
-
     initialized = true;
 }
 
@@ -177,16 +174,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
     depth.upload(depth_h);
     cv::cuda::cvtColor(rgb, gray, CV_RGB2GRAY);
     gray.convertTo(gray, CV_8UC1);
-    gray.convertTo(gray_float, CV_32FC1, 1.0f / 255.0f);
     gray.download(gray_h);
-    gray_float.download(gray_float_h);
-
-    cv::cuda::GpuMat gradX, gradY;
-    cv::Mat gradX_h, gradY_h;
-    sobelFilterX->apply(gray_float, gradX);
-    sobelFilterY->apply(gray_float, gradY);
-    gradX.download(gradX_h);
-    gradY.download(gradY_h);
 
     /***** Filter depth *****/
     cv::cuda::bilateralFilter(depth, depth, -1, 0.03/* depth_sigma*/, 4.5/* space_sigma*/);
