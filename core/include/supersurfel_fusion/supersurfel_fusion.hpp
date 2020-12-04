@@ -140,8 +140,6 @@ private:
 
     double runtime, modelSize;
 
-    cv::Ptr<cv::cuda::Filter> sobelFilterX, sobelFilterY;
-
 }; // class SupersurfelFusion
 
 } // namespace supersurfel_fusion
