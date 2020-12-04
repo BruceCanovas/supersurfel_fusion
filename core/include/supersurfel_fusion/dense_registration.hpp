@@ -54,6 +54,22 @@ public:
                const CamParam& cam_param,
                Mat33& R,
                float3& t);
+    bool featureConstrainedSymmetricICP(const thrust::device_vector<float3>& source_positions,
+                                        const thrust::device_vector<float3>& source_colors,
+                                        const thrust::device_vector<Mat33>& source_orientations,
+                                        const thrust::device_vector<float3>& target_colors,
+                                        const thrust::device_vector<Mat33>& target_orientations,
+                                        const thrust::device_vector<float>& target_confidences,
+                                        const thrust::host_vector<float3>& source_features3D,
+                                        const thrust::host_vector<float3>& target_features3D,
+                                        int source_size,
+                                        const cv::Ptr<Texture<float>>& tex_depth,
+                                        const cv::Ptr<Texture<int>>& tex_index,
+                                        const Mat33& R_init,
+                                        const float3& t_init,
+                                        const CamParam& cam,
+                                        Mat33& R,
+                                        float3& t);
     inline int& setNbIter(){return nbIter;}
     inline const int&  getNbIter() const {return nbIter;}
     inline double& setCovThresh(){return covThresh;}

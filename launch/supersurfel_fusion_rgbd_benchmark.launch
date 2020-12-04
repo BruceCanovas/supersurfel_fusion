@@ -5,7 +5,7 @@
     <node if="true" pkg="supersurfel_fusion" type="supersurfel_fusion_rgbd_benchmark_node" name="supersurfel_fusion_rgbd_benchmark_node" output="screen" clear_params="true" required="true">
       
         <param name="cell_size" value="16"/>
-        <param name="seg_iter" value="8"/>
+        <param name="seg_iter" value="10"/>
         <param name="lambda_pos" value="10.0"/>
         <param name="lambda_bound" value="1000.0"/>
         <param name="lambda_size" value="1000.0"/>
@@ -21,10 +21,10 @@
         <param name="range_min" value="0.2"/>
         <param name="range_max" value="5.0"/>
         <param name="nb_supersurfels_max" value="100000"/>
-        <param name="delta_t" value="10"/>
-        <param name="conf_thresh_scale" value="6.0"/>
+        <param name="delta_t" value="20"/>
+        <param name="conf_thresh_scale" value="10.0"/>
         
-        <param name="icp_iter" value="6"/>
+        <param name="icp_iter" value="10"/>
         <param name="icp_cov_thresh" value="0.05"/>
         
         <param name="untracked_threshold" value="10"/>

@@ -31,6 +31,8 @@
 #include <supersurfel_fusion/deformation_graph.hpp>
 #include <supersurfel_fusion/motion_detection.hpp>
 
+#include <opencv2/cudafilters.hpp>
+
 
 namespace supersurfel_fusion
 {
@@ -76,8 +78,9 @@ public:
     void exportModel(std::string filename);
     void computeSuperpixelSegIm(cv::Mat& seg_im);
     void computeSlantedPlaneIm(cv::Mat& slanted_plane_im);
-    void closeLoop(const std::vector<cv::KeyPoint>& curr_kpts,
-                   const cv::Mat& curr_desc);
+    void closeGlobalLoop(const std::vector<cv::KeyPoint>& curr_kpts,
+                         const cv::Mat& curr_desc);
+    void updateLocalMap();
 
     inline bool isInitialized() {return initialized;}
     inline const Supersurfels& getFrame() {return frame;}
@@ -110,7 +113,7 @@ private:
 
     Supersurfels model, frame;
     CachedAllocator allocator;
-    int nbSupersurfels, nbSupersurfelsMax, nbRemoved, nbActive;
+    int nbSupersurfels, nbSupersurfelsMax, nbRemoved, nbVisible;
     int *nbSupersurfelsDev, *nbRemovedDev;
 
     cv::cuda::GpuMat filteredDepth;
@@ -122,7 +125,7 @@ private:
 
     Ferns* ferns;
     bool enableLoopClosure, LCdone;
-    int previousFernId, stampLastLC;
+    int previousFernId, stampLastGlobalLC;
     DeformationGraph def;
 
     MotionDetection mod;
@@ -136,6 +139,8 @@ private:
     CamParam cam;
 
     double runtime, modelSize;
+
+    cv::Ptr<cv::cuda::Filter> sobelFilterX, sobelFilterY;
 
 }; // class SupersurfelFusion
 

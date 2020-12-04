@@ -34,17 +34,15 @@
 #include <g2o/solvers/pcg/linear_solver_pcg.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
-
 #define N_PASSES 2
-#define REPROJECTION_TH2 4.0
+#define REPROJECTION_TH2 5.0
 
 
 namespace supersurfel_fusion
 {
 
 PnPSolver::PnPSolver()
-    : optimizer(nullptr)//,
-      //rmse(0.0)
+    : optimizer(nullptr)
 {
     optimizer = new g2o::SparseOptimizer();
     optimizer->setVerbose(false);
@@ -109,11 +107,7 @@ bool PnPSolver::computePose(Eigen::Isometry3f& cam_pose,
 
     // perform optimzation
     inlierMarks.clear();
-
-    std::vector<int> inlier_marks(nb_points, 1);
-
-    //double rmse = 0.0;
-    //rmse = 0.0;
+    inlierMarks.resize(nb_points, 1);
 
     for(int i = 0; i < N_PASSES; i++)
     {
@@ -125,27 +119,18 @@ bool PnPSolver::computePose(Eigen::Isometry3f& cam_pose,
             if(edges[k]->chi2() > REPROJECTION_TH2)
             {
                 edges[k]->setLevel(1);
-                inlier_marks[k] = 0;
-
-
+                inlierMarks[k] = 0;
             }
-            //else if(i == N_PASSES - 1)
-            //    rmse += edges[k]->chi2();
         }
     }
 
-    inlierMarks = inlier_marks;
-
-    int nb_inliers = std::accumulate(inlier_marks.begin(), inlier_marks.end(), 0);
-
-    //rmse /= double(nb_inliers);
-    //rmse = std::sqrt(rmse);
+    nbInliers = std::accumulate(inlierMarks.begin(), inlierMarks.end(), 0);
 
     // retrieve optimized pose
     Eigen::Vector3f op_position = cam_vertex->estimate().translation().cast<float>();
     Eigen::Quaternionf op_orientation = cam_vertex->estimate().rotation().cast<float>();
 
-    if(nb_inliers >= 30 && (op_position - cam_pose.translation()).norm() < 0.3)
+    if(float(nbInliers) >= 0.2f * float(points2D.size())  && (op_position - cam_pose.translation()).norm() < 0.5f)
     {
         Eigen::Isometry3f op_pose;
         op_pose.translation() = op_position;
@@ -155,130 +140,6 @@ bool PnPSolver::computePose(Eigen::Isometry3f& cam_pose,
 
         valid = true;
     }
-
-    //std::cout<<"SolvePnP RMSE = "<<rmse<<" nb inliers = "<<nb_inliers<<std::endl;
-
-    optimizer->clear();
-
-    return valid;
-}
-
-bool PnPSolver::computePoseWithPrior(Eigen::Isometry3f& cam_pose,
-                                     Eigen::Isometry3f const& cam_pose_prior,
-                                     const std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& points3D,
-                                     const std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>& points2D,
-                                     float fx,
-                                     float fy,
-                                     float cx,
-                                     float cy)
-{
-    bool valid = false;
-
-    // add camera
-    Eigen::Quaterniond orientation(cam_pose.linear().cast<double>());
-    Eigen::Vector3d position = cam_pose.translation().cast<double>();
-    g2o::SBACam sba_cam(orientation, position);
-    sba_cam.setKcam(double(fx), double(fy), double(cx), double(cy), 0.0);
-    g2o::VertexCam *cam_vertex = new g2o::VertexCam();
-    cam_vertex->setId(0);
-    cam_vertex->setEstimate(sba_cam);
-    cam_vertex->setFixed(false);
-    optimizer->addVertex(cam_vertex);
-
-
-    // add mono measurments
-    int nb_points = points3D.size();
-    double delta = std::sqrt(REPROJECTION_TH2);
-    int vertex_id = 1;
-    std::vector<g2o::EdgeProjectP2MC *> edges; // edge type for monocular projection
-    edges.reserve(nb_points);
-
-    for(int i = 0; i < nb_points; i++)
-    {
-        g2o::VertexSBAPointXYZ *point_vertex = new g2o::VertexSBAPointXYZ();
-        point_vertex->setId(vertex_id++);
-        point_vertex->setMarginalized(false);
-        point_vertex->setEstimate(points3D[i].cast<double>());
-        point_vertex->setFixed(true);
-        optimizer->addVertex(point_vertex);
-
-        g2o::EdgeProjectP2MC *edge = new g2o::EdgeProjectP2MC();
-        edge->setVertex(0, point_vertex);
-        edge->setVertex(1, cam_vertex);
-        edge->setMeasurement(points2D[i].cast<double>());
-        edge->information() = Eigen::Matrix2d::Identity();
-        g2o::RobustKernel *rkh = new g2o::RobustKernelCauchy;
-        edge->setRobustKernel(rkh);
-        rkh->setDelta(delta);
-        optimizer->addEdge(edge);
-        edges.push_back(edge);
-    }
-
-    Eigen::Quaterniond prior_orientation(cam_pose_prior.linear().cast<double>());
-    Eigen::Vector3d prior_position = cam_pose_prior.translation().cast<double>();
-    g2o::SBACam prior_sba_cam(prior_orientation, prior_position);
-    prior_sba_cam.setKcam(double(fx), double(fy), double(cx), double(cy), 0.0);
-    g2o::VertexCam *prior_vertex = new g2o::VertexCam();
-    prior_vertex->setId(vertex_id++);
-    prior_vertex->setEstimate(prior_sba_cam);
-    prior_vertex->setFixed(true);
-    optimizer->addVertex(prior_vertex);
-
-    g2o::EdgeSBACam *edge_prior = new g2o::EdgeSBACam();
-    edge_prior->setVertex(0, prior_vertex);
-    edge_prior->setVertex(1, cam_vertex);
-    edge_prior->setMeasurement(g2o::SE3Quat());
-    optimizer->addEdge(edge_prior);
-
-
-    // perform optimzation
-    inlierMarks.clear();
-
-    std::vector<int> inlier_marks(nb_points, 1);
-
-    //double rmse = 0.0;
-    //rmse = 0.0;
-
-    for(int i = 0; i < N_PASSES; i++)
-    {
-        optimizer->initializeOptimization(0);
-        optimizer->optimize(5);
-
-        for(int k = 0; k < nb_points; k++)
-        {
-            if(edges[k]->chi2() > REPROJECTION_TH2)
-            {
-                edges[k]->setLevel(1);
-                inlier_marks[k] = 0;
-            }
-            //else if(i == N_PASSES - 1)
-            //    rmse += edges[k]->chi2();
-        }
-    }
-
-    inlierMarks = inlier_marks;
-
-    int nb_inliers = std::accumulate(inlier_marks.begin(), inlier_marks.end(), 0);
-
-    //rmse /= double(nb_inliers);
-    //rmse = std::sqrt(rmse);
-
-    // retrieve optimized pose
-    Eigen::Vector3f op_position = cam_vertex->estimate().translation().cast<float>();
-    Eigen::Quaternionf op_orientation = cam_vertex->estimate().rotation().cast<float>();
-
-    if(nb_inliers >= 10 && (op_position - cam_pose.translation()).norm() < 0.3)
-    {
-        Eigen::Isometry3f op_pose;
-        op_pose.translation() = op_position;
-        op_pose.linear() = op_orientation.toRotationMatrix();
-
-        cam_pose = op_pose;
-
-        valid = true;
-    }
-
-    //std::cout<<"SolvePnP RMSE = "<<rmse<<" nb inliers = "<<nb_inliers<<std::endl;
 
     optimizer->clear();
 

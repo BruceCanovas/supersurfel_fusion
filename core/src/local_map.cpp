@@ -50,7 +50,7 @@ void LocalMap::update(const Eigen::Isometry3f cam_to_map,
     {
         float z = depth.at<float>(frame_keypoints[i].pt.y, frame_keypoints[i].pt.x);
 
-        if(z > range_min && z < range_max)
+        if(z >= range_min && z <= range_max)
         {
             Eigen::Vector3f p(z * (frame_keypoints[i].pt.x - cam_param.cx) / cam_param.fx,
                               z * (frame_keypoints[i].pt.y - cam_param.cy) / cam_param.fy,
@@ -60,9 +60,7 @@ void LocalMap::update(const Eigen::Isometry3f cam_to_map,
             if(matches_idx[i] > 0) // replace map point with new match
             {
                 positions[matches_idx[i]] = p;
-                //positions[matches_idx[i]] = (p + positions[matches_idx[i]]) / 2.0f;
                 frame_descriptors.row(i).copyTo(descriptors.row(matches_idx[i]));
-                //counters[matches_idx[i]] = 0;
             }
             else // insert new point
             {
@@ -90,7 +88,7 @@ void LocalMap::updateMOD(const Eigen::Isometry3f cam_to_map,
     {
         float z = depth.at<float>(frame_keypoints[i].pt.y, frame_keypoints[i].pt.x);
 
-        if(z > range_min && z < range_max && is_static[index_mat.at<int>(frame_keypoints[i].pt.y, frame_keypoints[i].pt.x)])
+        if(z >= range_min && z <= range_max && is_static[index_mat.at<int>(frame_keypoints[i].pt.y, frame_keypoints[i].pt.x)])
         {
             Eigen::Vector3f p(z * (frame_keypoints[i].pt.x - cam_param.cx) / cam_param.fx,
                               z * (frame_keypoints[i].pt.y - cam_param.cy) / cam_param.fy,
@@ -100,9 +98,7 @@ void LocalMap::updateMOD(const Eigen::Isometry3f cam_to_map,
             if(matches_idx[i] > 0) // replace map point with new match
             {
                 positions[matches_idx[i]] = p;
-                //positions[matches_idx[i]] = (p + positions[matches_idx[i]]) / 2.0f;
                 frame_descriptors.row(i).copyTo(descriptors.row(matches_idx[i]));
-                //counters[matches_idx[i]] = 0;
             }
             else // insert new point
             {
@@ -154,6 +150,7 @@ void LocalMap::reset(const Eigen::Isometry3f cam_to_map,
                      float range_min,
                      float range_max,
                      const cv::Mat& depth,
+                     const cv::Mat& gray,
                      const std::vector<cv::KeyPoint>& frame_keypoints,
                      const cv::Mat& frame_descriptors)
 {
@@ -165,7 +162,7 @@ void LocalMap::reset(const Eigen::Isometry3f cam_to_map,
     {
         float z = depth.at<float>(frame_keypoints[i].pt.y, frame_keypoints[i].pt.x);
 
-        if(z > range_min && z < range_max)
+        if(z >= range_min && z <= range_max)
         {
             Eigen::Vector3f p(z * (frame_keypoints[i].pt.x - cam_param.cx) / cam_param.fx,
                               z * (frame_keypoints[i].pt.y - cam_param.cy) / cam_param.fy,
@@ -200,20 +197,6 @@ void LocalMap::clean()
     descriptors = cleaned_descriptors.clone();
 }
 
-void LocalMap::insert(const Eigen::Vector3f& position, const cv::Mat& descriptor)
-{
-    positions.push_back(Eigen::Vector3f(position));
-    counters.push_back(0);
-    descriptors.push_back(descriptor.clone());
-}
-
-void LocalMap::replace(int id, const Eigen::Vector3f& position, const cv::Mat& descriptor)
-{
-    positions[id] = position;
-    descriptor.copyTo(descriptors.row(id));
-    counters[id] = 0;
-}
-
 void LocalMap::findMatches(const std::vector<cv::KeyPoint>& frame_keypoints,
                            const cv::Mat& frame_descriptors,
                            std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& matched_map_positions,
@@ -228,11 +211,6 @@ void LocalMap::findMatches(const std::vector<cv::KeyPoint>& frame_keypoints,
     //cv::Mat vis;
     //cv::cvtColor(rgb, vis, CV_RGB2BGR);
 
-    //states.resize(positions.size(), -1);
-
-    //matched_map_positions.clear();
-    //matched_frame_positions.clear();
-    //keypoints_matches_idx.clear();
     keypoints_matches_idx.resize(frame_keypoints.size(), -1);
 
     cv::Mat map_descriptors;
@@ -244,7 +222,7 @@ void LocalMap::findMatches(const std::vector<cv::KeyPoint>& frame_keypoints,
         Eigen::Vector3f p_view = map_to_cam * positions[i];
         float z = p_view(2);
 
-        if(z > range_min && z < range_max)
+        if(z >= range_min && z <= range_max)
         {
            cv::Point2f proj(cam_param.fx * p_view(0) / z + cam_param.cx,
                             cam_param.fy * p_view(1) / z + cam_param.cy);
@@ -257,42 +235,36 @@ void LocalMap::findMatches(const std::vector<cv::KeyPoint>& frame_keypoints,
                 map_descriptors.push_back(descriptors.row(i).clone());
                 map_idx.push_back(i);
 
-                //states[i] = 0;
                 //cv::drawMarker(vis, cv::Point(int(proj.x), int(proj.y)), cv::Scalar(0,0,255), cv::MARKER_CROSS, 10/* marker_size*/, 1/* thickness*/, 8/* line_type*/);
             }
-            else
-                counters[i]++;
         }
-        else
-            counters[i]++;
+
+        counters[i]++;
     }
 
     std::vector<cv::DMatch> matches_bf;
     cv::cuda::GpuMat map_descriptors_d(map_descriptors), frame_descriptors_d(frame_descriptors);
-    matcher->match(map_descriptors_d, frame_descriptors_d, matches_bf);
+    matcher->match(frame_descriptors_d, map_descriptors_d, matches_bf);
 
     std::vector<bool> inliers_states;
     cv::Size img_size(cam_param.width, cam_param.height);
-    gms_matcher gms(map_keypoints, img_size, frame_keypoints, img_size, matches_bf);
-    //int nb_inliers = gms.GetInlierMask(inliers_states, true, true);
+    gms_matcher gms(frame_keypoints, img_size, map_keypoints, img_size, matches_bf);
     int nb_inliers = gms.GetInlierMask(inliers_states, false, false);
 
     for(size_t j = 0; j < inliers_states.size(); j++)
     {
-        if(inliers_states[j])
+        if(inliers_states[j] && cv::norm(frame_keypoints[matches_bf[j].queryIdx].pt - map_keypoints[matches_bf[j].trainIdx].pt) < 100.0f)
         {
-            matched_map_positions.push_back(positions[map_idx[matches_bf[j].queryIdx]]);
-            cv::Point2f pt = frame_keypoints[matches_bf[j].trainIdx].pt;
+            matched_map_positions.push_back(positions[map_idx[matches_bf[j].trainIdx]]);
+            cv::Point2f pt = frame_keypoints[matches_bf[j].queryIdx].pt;
             matched_frame_positions.push_back(Eigen::Vector2f(pt.x, pt.y));
-            keypoints_matches_idx[matches_bf[j].trainIdx] = map_idx[matches_bf[j].queryIdx];
+            keypoints_matches_idx[matches_bf[j].queryIdx] = map_idx[matches_bf[j].trainIdx];
 
-            //cv::Point2f proj = map_keypoints[matches_bf[j].queryIdx].pt;
+            //cv::Point2f proj = map_keypoints[matches_bf[j].trainIdx].pt;
             //cv::drawMarker(vis, cv::Point(int(proj.x), int(proj.y)), cv::Scalar(0,255,0), cv::MARKER_SQUARE, 10/* marker_size*/, 1/* thickness*/, 8/* line_type*/);
 
-            //states[map_idx[matches_bf[j].queryIdx]] = 1;
+            counters[map_idx[matches_bf[j].trainIdx]]--;
         }
-        else
-            counters[map_idx[matches_bf[j].queryIdx]]++;
     }
 
     //cv::imshow("Local map features", vis);

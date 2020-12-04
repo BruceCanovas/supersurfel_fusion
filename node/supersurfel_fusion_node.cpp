@@ -64,6 +64,7 @@ SupersurfelFusionNode::SupersurfelFusionNode()
     prevOptToMap.setIdentity();
 
     localMapPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("local_map", 1);
+    centersPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("centers", 1);
 }
 
 SupersurfelFusionNode::~SupersurfelFusionNode()
@@ -173,6 +174,10 @@ void SupersurfelFusionNode::RGBDCallback(const sensor_msgs::ImageConstPtr& msg_r
 
         if(localMapPub.getNumSubscribers() > 0)
             publishLocalMapPoints(msg_rgb->header);
+
+
+        if(centersPub.getNumSubscribers() > 0)
+            publishCenters(msg_rgb->header);
 
         if(display)
         {
@@ -298,11 +303,11 @@ void SupersurfelFusionNode::camInfoCallback(const sensor_msgs::CameraInfo& msg_c
 
 void SupersurfelFusionNode::publishModelMarker(const std_msgs::Header& header)
 {
-    thrust::host_vector<float3> positions(ssf.getModel().positions);
-    thrust::host_vector<float3> colors(ssf.getModel().colors);
-    thrust::host_vector<Mat33> orientations(ssf.getModel().orientations);
-    thrust::host_vector<float2> dims(ssf.getModel().dims);
-    thrust::host_vector<float> confidences(ssf.getModel().confidences);
+    thrust::host_vector<float3> positions(ssf.getModel().positions.begin(), ssf.getModel().positions.begin() + ssf.getnbSupersurfels());
+    thrust::host_vector<float3> colors(ssf.getModel().colors.begin(), ssf.getModel().colors.begin() + ssf.getnbSupersurfels());
+    thrust::host_vector<Mat33> orientations(ssf.getModel().orientations.begin(), ssf.getModel().orientations.begin() + ssf.getnbSupersurfels());
+    thrust::host_vector<float2> dims(ssf.getModel().dims.begin(), ssf.getModel().dims.begin() + ssf.getnbSupersurfels());
+    thrust::host_vector<float> confidences(ssf.getModel().confidences.begin(), ssf.getModel().confidences.begin() + ssf.getnbSupersurfels());
 
     visualization_msgs::Marker model_marker_msg;
 
@@ -325,6 +330,7 @@ void SupersurfelFusionNode::publishModelMarker(const std_msgs::Header& header)
 
     float thresh = confThresh;
 
+    #pragma omp parallel for
     for(size_t i = 0; i < positions.size(); ++i)
     {
         if(confidences[i] > thresh)
@@ -675,6 +681,38 @@ void SupersurfelFusionNode::publishLocalMapPoints(const std_msgs::Header& header
     local_map_cloud->header.frame_id =  mapFrameId;
     pcl_conversions::toPCL(header.stamp, local_map_cloud->header.stamp);
     localMapPub.publish(local_map_cloud);
+}
+
+void SupersurfelFusionNode::publishCenters(const std_msgs::Header& header)
+{
+    thrust::host_vector<float3> positions(ssf.getModel().positions);
+    thrust::host_vector<float3> colors(ssf.getModel().colors);
+    thrust::host_vector<float> confidences(ssf.getModel().confidences);
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr centers_cloud(new  pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointXYZRGB point_rgb;
+
+    float thresh = confThresh;
+
+    for(size_t i = 0; i < positions.size(); ++i)
+    {
+        if(confidences[i] > thresh)
+        {
+            point_rgb.r = colors[i].x;
+            point_rgb.g = colors[i].y;
+            point_rgb.b = colors[i].z;
+
+            point_rgb.x = positions[i].x;
+            point_rgb.y = positions[i].y;
+            point_rgb.z = positions[i].z;
+
+            centers_cloud->points.push_back(point_rgb);
+        }
+    }
+
+    centers_cloud->header.frame_id =  mapFrameId;
+    pcl_conversions::toPCL(header.stamp, centers_cloud->header.stamp);
+    centersPub.publish(centers_cloud);
 }
 
 void SupersurfelFusionNode::run()

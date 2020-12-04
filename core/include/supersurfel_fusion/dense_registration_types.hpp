@@ -56,6 +56,7 @@ struct MotionTrackingData
 {
     float JtJ[21];
     float Jtr[6];
+    float r, inliers;
 };
 
 } // namespace supersurfel_fusion

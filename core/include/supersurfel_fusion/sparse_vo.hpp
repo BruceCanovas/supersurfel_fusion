@@ -24,6 +24,7 @@
 #include <supersurfel_fusion/local_map.hpp>
 #include <Eigen/StdVector>
 #include <supersurfel_fusion/pnp_solver.hpp>
+//#include "KDTreeVectorOfVectorsAdaptor.h"
 
 
 namespace supersurfel_fusion
@@ -58,7 +59,6 @@ public:
                                     float range_min,
                                     float range_max);
     void reset(const Eigen::Isometry3f& reset_pose);
-
     inline const std::vector<cv::KeyPoint>& getKeypoints() const {return keypoints;}
     inline const cv::Mat& getDescriptors() const {return descriptors;}
     inline std::vector<cv::KeyPoint>& setKeypoints() {return keypoints;}
@@ -66,12 +66,10 @@ public:
     inline const Eigen::Isometry3f& getPose() const {return pose;}
     inline Eigen::Isometry3f& setPose() {return pose;}
     inline const std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& getLocalMapPoints() const {return localMap->getPositions();}
-
-    void computeInlierFeature3DCorrespondences(std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& map_features3D,
-                                               std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& frame_features3D,
-                                               //float& rmse,
-                                               float range_min,
-                                               float range_max);
+    inline const std::vector<int>& getInlierMarks() const {return solver.getInlierMarks();}
+    inline int getNbInliers() const {return solver.getNbInliers();}
+    inline const std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& getMatchedMapPositions() const {return matchedMapPositions;}
+    inline const std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>& getMatchedKeypointsPositions() const {return matchedKeypointsPositions;}
 
 private:
     cv::Mat rgb, depth, gray;

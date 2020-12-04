@@ -65,13 +65,14 @@ class PnPSolver
                               float cy);
 
     inline const std::vector<int>& getInlierMarks() const {return inlierMarks;}
-    //inline const double getRMSE() const {return rmse;}
+    inline int getNbInliers() const {return nbInliers;}
 
   private:
     g2o::SparseOptimizer *optimizer;
 
     std::vector<int> inlierMarks;
-    //double rmse;
+    std::vector<std::pair<int, float>> inliersIdDist;
+    int nbInliers;
 
 }; // class PnPSolver
 

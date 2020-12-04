@@ -113,7 +113,7 @@ void SupersurfelFusion::initialize(const CamParam& cam_param,
                        filter_threshold);
 
     nbSupersurfelsMax = nb_supersurfels_max;
-    nbActive = 0;
+    nbVisible = 0;
     nbSupersurfels = 0;
 
     model.positions.resize(nbSupersurfelsMax);
@@ -150,7 +150,7 @@ void SupersurfelFusion::initialize(const CamParam& cam_param,
     enableMod = enable_mod;
 
     ferns = new Ferns(500, 5, range_max);
-    stampLastLC = 0;
+    stampLastGlobalLC = 0;
     previousFernId = 0;
     enableLoopClosure = enable_loop_closure;
     LCdone = false;
@@ -160,6 +160,9 @@ void SupersurfelFusion::initialize(const CamParam& cam_param,
 
     stamp = 0;
 
+    sobelFilterX = cv::cuda::createSobelFilter(CV_32FC1, CV_32FC1, 1, 0, 3, 1);
+    sobelFilterY = cv::cuda::createSobelFilter(CV_32FC1, CV_32FC1, 0, 1, 3, 1);
+
     initialized = true;
 }
 
@@ -168,13 +171,22 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 {
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    cv::Mat gray_h;
-    cv::cuda::GpuMat gray;
+    cv::Mat gray_h, gray_float_h;
+    cv::cuda::GpuMat gray, gray_float;
     rgb.upload(rgb_h);
     depth.upload(depth_h);
     cv::cuda::cvtColor(rgb, gray, CV_RGB2GRAY);
     gray.convertTo(gray, CV_8UC1);
+    gray.convertTo(gray_float, CV_32FC1, 1.0f / 255.0f);
     gray.download(gray_h);
+    gray_float.download(gray_float_h);
+
+    cv::cuda::GpuMat gradX, gradY;
+    cv::Mat gradX_h, gradY_h;
+    sobelFilterX->apply(gray_float, gradX);
+    sobelFilterY->apply(gray_float, gradY);
+    gradX.download(gradX_h);
+    gradY.download(gradY_h);
 
     /***** Filter depth *****/
     cv::cuda::bilateralFilter(depth, depth, -1, 0.03/* depth_sigma*/, 4.5/* space_sigma*/);
@@ -182,16 +194,13 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
     vo->setFrame(rgb_h, depth_h, gray_h);
 
-    //vo->extractFeatures();
     std::thread t1(&SparseVO::extractFeatures,
                    vo);
-
 
     /***** Segment in superpixels *****/
     tps->compute(rgb, depth);
     tps->filter();
     tps->computeDepthImage(filteredDepth);
-    //depth.copyTo(filteredDepth);
 
     /***** Generation of supersurfels *****/
     generateSupersurfels();
@@ -208,7 +217,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
         mod.detectMotion(rgb_h,
                          gray_h,
-                         filtered_depth_h/*depth_h*/,
+                         filtered_depth_h,
                          static_keypoints,
                          static_descriptors,
                          frame.positions,
@@ -232,7 +241,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
     /***** Dense frame to model registration *****/
 
-    if(nbActive > 0)
+    if(nbVisible > 0)
     {
         Mat33 R_view = transpose(pose.R);
         float3 t_view = -R_view * pose.t;
@@ -242,23 +251,93 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
                                  0.0f, 0.0f, 1.0f);
         float3 t_rel = make_float3(0.0f, 0.0f, 0.0f);
 
-        bool icp_success = icp->align(model.positions,
-                                      model.colors,
-                                      model.orientations,
-                                      model.confidences,
-                                      frame.positions,
-                                      frame.colors,
-                                      frame.orientations,
-                                      frame.confidences,
-                                      nbActive,
-                                      texDepth,
-                                      tps->getTexIndex(),
-                                      R_view,
-                                      t_view,
-                                      cam,
-                                      R_rel,
-                                      t_rel);
+        thrust::host_vector<float3> map_features3D_h, frame_features3D_h;
+        
+        if(vo_success)
+        {
+            const std::vector<int> & inlier_marks = vo->getInlierMarks();
+            thrust::host_vector<float> dist_h;
 
+            for(size_t i = 0; i < inlier_marks.size(); i++)
+            {
+                if(inlier_marks[i])
+                {
+                    Eigen::Vector2f kp = vo->getMatchedKeypointsPositions()[i];
+
+                    float z = depth_h.at<float>(kp(1), kp(0));
+
+                    if(z >= rangeMin && z <= rangeMax)
+                    {
+                        Eigen::Vector3f pos = vo->getMatchedMapPositions()[i];
+
+                        float3 pf = make_float3(z * (kp(0) - cam.cx) / cam.fx,
+                                                z * (kp(1) - cam.cy) / cam.fy,
+                                                z);
+                        float3 pm =  make_float3(pos(0), pos(1), pos(2));
+                        float dist = length(R_view * pm + t_view - pf);
+
+                        if(dist <= 0.02f)
+                        {
+                            map_features3D_h.push_back(pm);
+                            frame_features3D_h.push_back(pf);
+                            dist_h.push_back(dist);
+                        }
+                    }
+                }
+            }
+
+            thrust::device_vector<float> dist(dist_h);
+            thrust::device_vector<float3> map_features3D(map_features3D_h), frame_features3D(frame_features3D_h);
+
+            thrust::sort_by_key(thrust::cuda::par(allocator),
+                                dist.begin(),
+                                dist.end(),
+                                thrust::make_zip_iterator(thrust::make_tuple(map_features3D.begin(),
+                                                                             frame_features3D.begin())));
+
+            int new_size = map_features3D_h.size();
+            if(new_size >= 30)
+                new_size /= 3;
+
+            map_features3D.resize(new_size);
+            frame_features3D.resize(new_size);
+
+            map_features3D_h = map_features3D;
+            frame_features3D_h = frame_features3D;
+        }
+
+//        std::cout<<"Nb feature constraints = "<<map_features3D_h.size()<<std::endl;
+//                                      model.colors,
+//                                      model.orientations,
+//                                      model.confidences,
+//                                      frame.positions,
+//                                      frame.colors,
+//                                      frame.orientations,
+//                                      frame.confidences,
+//                                      nbVisible,
+//                                      texDepth,
+//                                      tps->getTexIndex(),
+//                                      R_view,
+//                                      t_view,
+//                                      cam,
+//                                      R_rel,
+//                                      t_rel);
+        bool icp_success = icp->featureConstrainedSymmetricICP(model.positions,
+                                                               model.colors,
+                                                               model.orientations,
+                                                               frame.colors,
+                                                               frame.orientations,
+                                                               frame.confidences,
+                                                               map_features3D_h,
+                                                               frame_features3D_h,
+                                                               nbVisible,
+                                                               texDepth,
+                                                               tps->getTexIndex(),
+                                                               R_view,
+                                                               t_view,
+                                                               cam,
+                                                               R_rel,
+                                                               t_rel);
         if(icp_success)
         {
             std::cout<<"ICP success"<<std::endl;
@@ -283,32 +362,18 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
     if(enableLoopClosure &&
        !ferns->isNewFrame() &&
        ferns->getBestKeyFrameId() != previousFernId  &&
-       stamp - stampLastLC > 100 &&
-       stamp - ferns->getBestPose().stamp > 50)
+       stamp - stampLastGlobalLC > 100 &&
+       stamp - ferns->getBestPose().stamp > 100)
     {
-        closeLoop(vo->getKeypoints(),
-                  vo->getDescriptors());
+        closeGlobalLoop(vo->getKeypoints(),
+                        vo->getDescriptors());
     }
     else
         LCdone = false;
 
-    if(LCdone)
-        vo->reset(getPoseEigen());
-    else
-    {
-        vo->setPose() = getPoseEigen();
-        if(enableMod)
-        {
-            cv::Mat index_mat;
-            tps->getIndexImage().download(index_mat);
-
-            vo->updateLocalMapMOD(index_mat, mod.getIsStatic()/*, mod.getMask()*/);
-        }
-        else
-            vo->updateLocalMap();
-    }
-
     previousFernId = ferns->getBestKeyFrameId();
+
+    std::thread t2(&SupersurfelFusion::updateLocalMap, this);
 
     /***** Update and filter model *****/
     if(nbSupersurfels > 0)
@@ -316,11 +381,11 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
         cudaMemset(nbRemovedDev, 0, sizeof(int));
         thrust::device_vector<bool> matched(nbSuperpixels, false);
 
-        if(nbActive > 0)
+        if(nbVisible > 0)
         {
             thrust::device_vector<float2> idx_scores(nbSuperpixels, make_float2(-1.0f, 0.05f));
 
-            findBestMatches<<<(nbActive + 127) / 128, 128>>>(thrust::raw_pointer_cast(&frame.positions[0]),
+            findBestMatches<<<(nbVisible + 127) / 128, 128>>>(thrust::raw_pointer_cast(&frame.positions[0]),
                                                              thrust::raw_pointer_cast(&frame.colors[0]),
                                                              thrust::raw_pointer_cast(&frame.orientations[0]),
                                                              thrust::raw_pointer_cast(&frame.confidences[0]),
@@ -341,7 +406,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
                                                              rangeMax,
                                                              cam.width,
                                                              cam.height,
-                                                             nbActive);
+                                                             nbVisible);
             cudaDeviceSynchronize();
             CudaCheckError();
 
@@ -393,10 +458,10 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
         cudaMemcpy(&nbSupersurfels, nbSupersurfelsDev, sizeof(int), cudaMemcpyDeviceToHost);
 
         thrust::device_vector<int> states(nbSupersurfels, 0); // 0: active, 1: inactive, 2: invalid
-        nbActive = 0;
-        int* nb_active_d;
-        cudaMalloc((void**)&nb_active_d, sizeof(int));
-        cudaMemcpy(nb_active_d, &nbActive, sizeof(int), cudaMemcpyHostToDevice);
+        nbVisible = 0;
+        int* nb_visible_d;
+        cudaMalloc((void**)&nb_visible_d, sizeof(int));
+        cudaMemcpy(nb_visible_d, &nbVisible, sizeof(int), cudaMemcpyHostToDevice);
 
         Mat33 R_view = transpose(pose.R);
         float3 t_view = -R_view * pose.t;
@@ -410,7 +475,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
                                                            confThresh,
                                                            texDepth->getTextureObject(),
                                                            nbRemovedDev,
-                                                           nb_active_d,
+                                                           nb_visible_d,
                                                            R_view,
                                                            t_view,
                                                            cam.fx,
@@ -426,8 +491,8 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
         CudaCheckError();
 
         cudaMemcpy(&nbRemoved, nbRemovedDev, sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(&nbActive, nb_active_d, sizeof(int), cudaMemcpyDeviceToHost);
-        cudaFree(nb_active_d);
+        cudaMemcpy(&nbVisible, nb_visible_d, sizeof(int), cudaMemcpyDeviceToHost);
+        cudaFree(nb_visible_d);
 
         thrust::sort_by_key(thrust::cuda::par(allocator),
                             states.begin(),
@@ -441,9 +506,11 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
     {
         thrust::copy(frame.begin(), frame.end(), model.begin());
         nbSupersurfels = nbSuperpixels;
-        nbActive = nbSupersurfels;
+        nbVisible = nbSupersurfels;
         cudaMemcpy(nbSupersurfelsDev, &nbSupersurfels, sizeof(int), cudaMemcpyHostToDevice);
     }
+
+    t2.join();
 
     if(ferns->isNewFrame())
     {
@@ -488,6 +555,25 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
     runtime += double(std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count());
     std::cout<<"Mean runtime = "<<runtime / double(stamp)<<std::endl;
     std::cout<<"\n";
+}
+
+void SupersurfelFusion::updateLocalMap()
+{
+    if(LCdone)
+        vo->reset(getPoseEigen());
+    else
+    {
+        vo->setPose() = getPoseEigen();
+        if(enableMod)
+        {
+            cv::Mat index_mat;
+            tps->getIndexImage().download(index_mat);
+
+            vo->updateLocalMapMOD(index_mat, mod.getIsStatic());
+        }
+        else
+            vo->updateLocalMap();
+    }
 }
 
 void SupersurfelFusion::generateSupersurfels()
@@ -615,10 +701,10 @@ Transform3 SupersurfelFusion::eigenToTransform3(const Eigen::Isometry3f& iso) co
     return tf;
 }
 
-void SupersurfelFusion::closeLoop(const std::vector<cv::KeyPoint>& curr_kpts,
-                                  const cv::Mat& curr_desc)
+void SupersurfelFusion::closeGlobalLoop(const std::vector<cv::KeyPoint>& curr_kpts,
+                                        const cv::Mat& curr_desc)
 {
-    std::cout<<"Loop closure detected"<<std::endl;
+    std::cout<<"Global loop closure detected"<<std::endl;
 
     Mat33 R_init = make_mat33(1.0f, 0.0f, 0.0f,
                               0.0f, 1.0f, 0.0f,
@@ -680,7 +766,7 @@ void SupersurfelFusion::closeLoop(const std::vector<cv::KeyPoint>& curr_kpts,
                               tvec,
                               false,
                               200,
-                              5.0,
+                              8.0,
                               0.99,
                               ransac_inliers_idx,
                               cv::SOLVEPNP_EPNP))
@@ -810,7 +896,7 @@ void SupersurfelFusion::closeLoop(const std::vector<cv::KeyPoint>& curr_kpts,
                             constraints,
                             ferns->getPoseGraph());
 
-    stampLastLC = stamp;
+    stampLastGlobalLC = stamp;
 
     if(def.constrain(model.positions, model.orientations, model.shapes, nbSupersurfels, ferns->setPoseGraph(),/* true,*/ stamp))
     {

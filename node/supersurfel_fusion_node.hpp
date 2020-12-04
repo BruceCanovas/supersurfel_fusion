@@ -56,6 +56,7 @@ public:
     void run();
 
     void publishLocalMapPoints(const std_msgs::Header& header);
+    void publishCenters(const std_msgs::Header& header);
 
 private:
     ros::NodeHandle nh, privateNh;
@@ -86,7 +87,7 @@ private:
     tf::Transform prevOptToMap;
     ros::Time prevTime;
 
-    ros::Publisher localMapPub;
+    ros::Publisher localMapPub, centersPub;
 };
 
 } // namespace supersurfel_fusion

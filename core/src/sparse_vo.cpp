@@ -145,9 +145,8 @@ bool SparseVO::track()
 //    lastPosition = pose.translation();
 //    linearVelocity = new_lin_velocity;
 
-    if(matchedMapPositions.size() >= 30)
+    if(matchedMapPositions.size() >= 20)
     {
-        // minimize reprojection error between matched map positions and frame keypoints
         valid = solver.computePose(pose,
                                    matchedMapPositions,
                                    matchedKeypointsPositions,
@@ -174,38 +173,6 @@ bool SparseVO::track()
     //    lastOk = false;
 
     return valid;
-}
-
-void SparseVO::computeInlierFeature3DCorrespondences(std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& map_features3D,
-                                                     std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& frame_features3D,
-                                                     //float& rmse,
-                                                     float range_min,
-                                                     float range_max)
-{
-    std::vector<int> inlier_marks = solver.getInlierMarks();
-
-    map_features3D.clear();
-    frame_features3D.clear();
-
-    for(size_t i = 0; i < inlier_marks.size(); i++)
-    {
-        if(inlier_marks[i])
-        {
-            float z = depth.at<float>(matchedKeypointsPositions[i](1), matchedKeypointsPositions[i](0));
-
-            if(z > range_min && z < range_max)
-            {
-                Eigen::Vector3f frame_feature3D(z * (matchedKeypointsPositions[i](0) - cam.cx) / cam.fx,
-                                                z * (matchedKeypointsPositions[i](1) - cam.cy) / cam.fy,
-                                                z);
-
-                map_features3D.push_back(frame_feature3D);
-                frame_features3D.push_back(matchedMapPositions[i]);
-            }
-        }
-    }
-
-    //rmse = float(solver.getRMSE());
 }
 
 void SparseVO::updateLocalMap()
@@ -256,7 +223,7 @@ void SparseVO::computeFilteredKeypoints3D(std::vector<cv::KeyPoint>& filtered_ke
     {
         float z = depth.at<float>(keypoints[i].pt.y, keypoints[i].pt.x);
 
-        if(z > range_min && z < range_max)
+        if(z >= range_min && z <= range_max)
         {
             points3D.push_back(cv::Point3f(z * (keypoints[i].pt.x - cam.cx) / cam.fx,
                                            z * (keypoints[i].pt.y - cam.cy) / cam.fy,
@@ -275,6 +242,7 @@ void SparseVO::reset(const Eigen::Isometry3f& reset_pose)
                     rangeMin,
                     rangeMax,
                     depth,
+                    gray,
                     keypoints,
                     descriptors);
 }

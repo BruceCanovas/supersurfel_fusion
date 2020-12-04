@@ -57,8 +57,6 @@ public:
                    const std::vector<bool>& is_static/*,
                    const cv::Mat& mask*/);
     void clean();
-    void insert(const Eigen::Vector3f& position, const cv::Mat& descriptor);
-    void replace(int id, const Eigen::Vector3f& position, const cv::Mat& descriptor);
     void findMatches(const std::vector<cv::KeyPoint>& frame_keypoints,
                      const cv::Mat& frame_descriptors,
                      std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>& matched_map_positions,
@@ -74,6 +72,7 @@ public:
                float range_min,
                float range_max,
                const cv::Mat& depth,
+               const cv::Mat& gray,
                const std::vector<cv::KeyPoint>& frame_keypoints,
                const cv::Mat& frame_descriptors);
 

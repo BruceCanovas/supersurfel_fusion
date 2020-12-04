@@ -216,16 +216,8 @@ __global__ void computeSupersurfels(float3* positions,
         stamps[k].x = stamp;
         stamps[k].y = stamp;
 
-        float theta = acosf(fabs(dot(normalize(position), eigen_vecs.rows[2])));
-
-        //printf("%f ", eigen_vals.x / eigen_vals.y);
-
-        if(/*theta * 180.0f / PI > 80.0f || */eigen_vals.x / eigen_vals.y > 50.0f)
+        if(eigen_vals.x / eigen_vals.y > 50.0f)
             confidences[k] = -1.0f;
-
-        //if(eigen_vals.x / eigen_vals.y > 4.0f)
-        //    dims[k].y = 4.0f * eigen_vals.x;
-
     }
     else
         confidences[k] = -1.0f;
@@ -289,7 +281,6 @@ __global__ void fuseSupersurfels(const float3* frame_positions,
                 float3 frame_lab = rgbToLab(frame_colors[frame_id]);
                 float3 model_lab = rgbToLab(model_colors[model_id]);
 
-                //float dist = length(model_position - frame_position);
                 float lab_dist = length(model_lab - frame_lab);
                 float delta_norm = fabsf(dot(model_normal, frame_normal));
                 float dist_to_plane = 0.5f * (fabsf(dot(frame_position, model_normal) - dot(model_position, model_normal)) +
@@ -309,7 +300,6 @@ __global__ void fuseSupersurfels(const float3* frame_positions,
 
                     float3 fused_color;
                     fused_color = labToRgb(ratio * (f_conf * frame_lab + m_conf * model_lab));
-                    //fused_color = ratio * (f_conf * frame_colors[frame_id] + m_conf * model_colors[model_id]);
 
                     Cov3 f_shape_1, m_shape_1, fused_shape, fused_shape_1;
                     float3 fused_position;
@@ -349,9 +339,6 @@ __global__ void fuseSupersurfels(const float3* frame_positions,
 
                     model_dims[model_id].x = eigen_vals.x;
                     model_dims[model_id].y = eigen_vals.y;
-
-                    //if(eigen_vals.x / eigen_vals.y > 5.0f)
-                    //    model_dims[model_id].y = 5.0f * eigen_vals.x;
                 }
             }
         }
@@ -412,11 +399,11 @@ __global__ void filterModel(float3* positions,
                             float* confidences,
                             int* states,
                             int current_stamp,
-                            int deltaT,
+                            int delta_t,
                             float conf_thresh,
                             cudaTextureObject_t texDepth,
-                            int* nbRemovedSurfelDev,
-                            int* nbActive,
+                            int* nb_removed,
+                            int* nb_active,
                             Mat33 R,
                             float3 t,
                             float fx,
@@ -436,7 +423,10 @@ __global__ void filterModel(float3* positions,
 
     int state = 0;
 
-    if((current_stamp - stamps[idx].y > deltaT && confidences[idx] < conf_thresh && current_stamp > deltaT)
+    int stamp = stamps[idx].y;
+    int time_diff = current_stamp - stamp;
+
+    if((time_diff > delta_t && confidences[idx] < conf_thresh && current_stamp > delta_t)
             || confidences[idx] <= 0.0f)
     {
         confidences[idx] = -1.0f;
@@ -444,11 +434,6 @@ __global__ void filterModel(float3* positions,
     }
     else
     {
-        //float3 pos = positions[idx];
-
-        //Mat33 Rt = transpose(R);
-
-        //float3 p = Rt * (pos - t);
 
         float3 p =  R * positions[idx] + t;
 
@@ -474,9 +459,9 @@ __global__ void filterModel(float3* positions,
     }
 
     if(state == 0)
-        atomicAggInc(nbActive);
+        atomicAggInc(nb_active);
     if(state == 2)
-        atomicAggInc(nbRemovedSurfelDev);
+        atomicAggInc(nb_removed);
 
     states[idx] = state;
 }
@@ -582,10 +567,11 @@ __global__ void findBestMatches(const float3* frame_positions,
         {
             int frame_id = tex2D<int>(tex_index, pm_proj.x, pm_proj.y);
 
+            matched[frame_id] = true;
+
             if(frame_confidences[frame_id] > 0.0f)
             {
                 float3 frame_position = R * frame_positions[frame_id] + t;
-                //Cov3 frame_shape = mult_ABAt(R, frame_shapes[frame_id]);
                 Mat33 frame_rot = frame_orientations[frame_id] * transpose(R);
 
                 float3 frame_normal = normalize(frame_rot.rows[2]);
@@ -596,20 +582,15 @@ __global__ void findBestMatches(const float3* frame_positions,
                 float dist = length(model_position - frame_position);
                 float lab_dist = length(model_lab - frame_lab);
                 float delta_norm = fabsf(dot(model_normal, frame_normal));
-                //float dist_to_plane = 0.5f * (fabsf(dot(frame_position, model_normal) - dot(model_position, model_normal)) +
-                //                              fabsf(dot(model_position, frame_normal) - dot(frame_position, frame_normal)));
 
-                if(lab_dist < 20.0f && delta_norm > 0.8f && dist < 0.05/* && dist_to_plane < 0.05f*/)
+                if(lab_dist < 15.0f && delta_norm > 0.8f && dist < 0.05f)
                 {
-                    matched[frame_id] = true;
-
-                    //atomicAggInc(nb_match);
+                    //matched[frame_id] = true;
 
                     if(dist < idx_scores[frame_id].y)
                     {
                         atomicExch(&idx_scores[frame_id].y, dist);
                         atomicExch(&idx_scores[frame_id].x, float(model_id));
-
                     }
                 }
             }
@@ -640,10 +621,10 @@ __global__ void updateSupersurfels(const float3* frame_positions,
     if(frame_id >= frame_length)
         return;
 
-    if(matched[frame_id])
-    {
-        int model_id = int(idx_scores[frame_id].x);
+    int model_id = int(idx_scores[frame_id].x);
 
+    if(matched[frame_id] && model_id >= 0)
+    {
         float3 model_position = model_positions[model_id];
         float3 frame_position = R * frame_positions[frame_id] + t;
         Cov3 frame_shape = mult_ABAt(R, frame_shapes[frame_id]);
@@ -658,7 +639,6 @@ __global__ void updateSupersurfels(const float3* frame_positions,
 
         float3 fused_color;
         fused_color = labToRgb(ratio * (f_conf * frame_lab + m_conf * model_lab));
-        //fused_color = ratio * (f_conf * frame_colors[frame_id] + m_conf * model_colors[model_id]);
 
         Cov3 f_shape_1, m_shape_1, fused_shape, fused_shape_1;
         float3 fused_position;
@@ -699,6 +679,52 @@ __global__ void updateSupersurfels(const float3* frame_positions,
         model_dims[model_id].x = eigen_vals.x;
         model_dims[model_id].y = eigen_vals.y;
     }
+}
+
+__global__ void findInactives(bool* is_inactive,
+                              float3* positions,
+                              int2* stamps,
+                              float* confidences,
+                              int current_stamp,
+                              int active_window,
+                              float conf_thresh,
+                              Mat33 R,
+                              float3 t,
+                              float fx,
+                              float fy,
+                              float cx,
+                              float cy,
+                              float z_min,
+                              float z_max,
+                              int width,
+                              int height,
+                              int nb_supersurfels)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx >= nb_supersurfels)
+        return;
+
+    int stamp = stamps[idx].y;
+    int time_diff = current_stamp - stamp;
+
+    bool val = false;
+
+    if(time_diff > active_window && confidences[idx] >= conf_thresh)
+    {
+        float3 p =  R * positions[idx] + t;
+
+        if(p.z > z_min && p.z < z_max)
+        {
+            float u = fx * p.x / p.z + cx;
+            float v = fy * p.y / p.z + cy;
+
+            if(u >= 0.0f && u < width && v >= 0.0f && v < height)
+                val = true;
+        }
+    }
+
+    is_inactive[idx] = val;
 }
 
 } // namespace supersurfel_fusion

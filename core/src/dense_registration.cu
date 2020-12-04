@@ -86,12 +86,7 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
 
     Eigen::Matrix<double, 6, 6> pose_covariance;
 
-    //double error, last_error;
-    //last_error = 1000.0;
-    //error = 1000.0;
-    //float nb_matches = 0;
-
-    while(iter++ < nbIter) // or error_change <= thresh
+    while(iter++ < nbIter)
     {
         Eigen::Matrix3f basis = tf_inc.block<3,3>(0,0).cast<float>();
         R_inc = make_mat33(basis(0,0), basis(0,1), basis(0,2),
@@ -117,7 +112,6 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
                                                      thrust::raw_pointer_cast(source_colors.data()),
                                                      thrust::raw_pointer_cast(source_orientations.data()),
                                                      thrust::raw_pointer_cast(source_confidences.data()),
-                                                     thrust::raw_pointer_cast(target_positions.data()),
                                                      thrust::raw_pointer_cast(target_colors.data()),
                                                      thrust::raw_pointer_cast(target_orientations.data()),
                                                      thrust::raw_pointer_cast(target_confidences.data()),
@@ -147,16 +141,12 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
                           thrust::logical_not<bool>());
         nb_pairs = thrust::count_if(valids.begin(), valids.end(), thrust::identity<bool>());
 
-        //std::cout<<nb_pairs<<std::endl;
-
         if(nb_pairs < 100)
         {
             std::cout<<" In ICP, number of matches is too small!   nb matches = "<<nb_pairs<<std::endl;
             valid = false;
             break;
         }
-
-        //nb_matches = float(nb_pairs);
 
         matched_source_normals.resize(nb_pairs);
         matched_source_positions.resize(nb_pairs);
@@ -176,26 +166,15 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
         scale = std::sqrt(scale / (2.0f * nb_pairs));
         scale = 1.0f / scale;
 
-//        buildSymmetricPoint2PlaneSystem<128><<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
-//                                                                                  thrust::raw_pointer_cast(matched_source_positions.data()),
-//                                                                                  thrust::raw_pointer_cast(matched_source_normals.data()),
-//                                                                                  thrust::raw_pointer_cast(matched_target_positions.data()),
-//                                                                                  thrust::raw_pointer_cast(matched_target_normals.data()),
-//                                                                                  source_centroid,
-//                                                                                  target_centroid,
-//                                                                                  scale,
-//                                                                                  nb_pairs);
-        buildSymmetricPoint2PlaneSystem2<<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
-                                                                              thrust::raw_pointer_cast(matched_source_positions.data()),
-                                                                              thrust::raw_pointer_cast(matched_source_normals.data()),
-                                                                              thrust::raw_pointer_cast(matched_target_positions.data()),
-                                                                              thrust::raw_pointer_cast(matched_target_normals.data()),
-                                                                              source_centroid,
-                                                                              target_centroid,
-                                                                              scale,
-                                                                              nb_pairs);
-        cudaDeviceSynchronize();
-        CudaCheckError();
+        buildSymmetricPoint2PlaneSystem<128><<<(nb_pairs + 128 - 1) / 128, 128>>>(mtd,
+                                                                                  thrust::raw_pointer_cast(matched_source_positions.data()),
+                                                                                  thrust::raw_pointer_cast(matched_source_normals.data()),
+                                                                                  thrust::raw_pointer_cast(matched_target_positions.data()),
+                                                                                  thrust::raw_pointer_cast(matched_target_normals.data()),
+                                                                                  source_centroid,
+                                                                                  target_centroid,
+                                                                                  scale,
+                                                                                  nb_pairs);
         cudaDeviceSynchronize();
         CudaCheckError();
 
@@ -210,16 +189,6 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
                double(d->JtJ[5]), double(d->JtJ[10]), double(d->JtJ[14]), double(d->JtJ[17]), double(d->JtJ[19]), double(d->JtJ[20]);
         Eigen::Matrix<double, 6, 1> Jtr;
         Jtr << double(d->Jtr[0]), double(d->Jtr[1]), double(d->Jtr[2]), double(d->Jtr[3]), double(d->Jtr[4]), double(d->Jtr[5]);
-
-        //error = double(d->r);
-        //std::cout<<"icp error = "<<error<<std::endl;
-
-        //if(std::abs(error - last_error) < 1e-5 * error) // converged
-        //    break;
-        //if(error > last_error + 0.0005) // diverged
-        //    break;
-
-        //last_error = error;
 
         pose_covariance = JtJ;
         Eigen::Matrix<double, 6, 1> Xp = JtJ.ldlt().solve(Jtr);
@@ -252,7 +221,7 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
 
     for(unsigned int i = 0; i < 6; i++)
     {
-        if(pose_covariance(i) > covThresh)
+        if(pose_covariance(i, i) > covThresh)
         {
             valid = false;
             break;
@@ -261,10 +230,188 @@ bool DenseRegistration::align(const thrust::device_vector<float3>& source_positi
 
     if(valid)
     {
-        if(length(t_inc) > 0.3f/* || nb_matches < 0.4f * float(source_size)*/)
+        if(length(t_inc) > 0.3f)
             valid = false;
         else
         {
+            R = transpose(R_inc);
+            t = -R * t_inc;
+        }
+    }
+
+    return valid;
+}
+
+bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vector<float3>& source_positions,
+                                                       const thrust::device_vector<float3>& source_colors,
+                                                       const thrust::device_vector<Mat33>& source_orientations,
+                                                       const thrust::device_vector<float3>& target_colors,
+                                                       const thrust::device_vector<Mat33>& target_orientations,
+                                                       const thrust::device_vector<float>& target_confidences,
+                                                       const thrust::host_vector<float3>& source_features3D,
+                                                       const thrust::host_vector<float3>& target_features3D,
+                                                       int source_size,
+                                                       const cv::Ptr<Texture<float>>& tex_depth,
+                                                       const cv::Ptr<Texture<int>>& tex_index,
+                                                       const Mat33& R_init,
+                                                       const float3& t_init,
+                                                       const CamParam& cam,
+                                                       Mat33& R,
+                                                       float3& t)
+{
+    bool valid = true;
+
+    int iter = 0;
+
+    Eigen::Matrix4d tf_inc = Eigen::Matrix4d::Identity();
+
+    R = make_mat33(1.0f, 0.0f, 0.0f,
+                   0.0f, 1.0f, 0.0f,
+                   0.0f, 0.0f, 1.0f);
+    t = make_float3(0.0f, 0.0f, 0.0f);
+    Mat33 R_corres;
+    float3 t_corres;
+    Mat33 R_inc;
+    float3 t_inc;
+
+    dim3 dim_block(128);
+    dim3 dim_grid((source_size + dim_block.x - 1) / dim_block.x);
+
+    Eigen::Matrix<double, 6, 1> Xp;
+    Eigen::Matrix<double, 6, 6> JtJ;
+    Eigen::Matrix<double, 6, 1> Jtr;
+    Eigen::Matrix<double, 3, 6> J_features;
+
+    Eigen::Matrix4d tf_iter;
+
+    double prev_error = std::numeric_limits<double>::max();
+
+    while(iter++ < nbIter)
+    {
+        Eigen::Matrix3f basis = tf_inc.block<3,3>(0,0).cast<float>();
+        R_inc = make_mat33(basis(0,0), basis(0,1), basis(0,2),
+                           basis(1,0), basis(1,1), basis(1,2),
+                           basis(2,0), basis(2,1), basis(2,2));
+        Eigen::Vector3f origin = tf_inc.block<3,1>(0,3).cast<float>();
+        t_inc = make_float3(origin(0), origin(1), origin(2));
+
+        R_corres = R_inc * R_init;
+        t_corres = R_inc * t_init + t_inc;
+
+        cudaMemset(mtd, 0, sizeof(MotionTrackingData));
+
+        computeSymmetricICPSystem<128><<<dim_grid, dim_block>>>(mtd,
+                                                                thrust::raw_pointer_cast(source_positions.data()),
+                                                                thrust::raw_pointer_cast(source_colors.data()),
+                                                                thrust::raw_pointer_cast(source_orientations.data()),
+                                                                thrust::raw_pointer_cast(target_colors.data()),
+                                                                thrust::raw_pointer_cast(target_orientations.data()),
+                                                                thrust::raw_pointer_cast(target_confidences.data()),
+                                                                R_corres,
+                                                                t_corres,
+                                                                cam.fx,
+                                                                cam.fy,
+                                                                cam.cx,
+                                                                cam.cy,
+                                                                tex_index->getTextureObject(),
+                                                                tex_depth->getTextureObject(),
+                                                                cam.width,
+                                                                cam.height,
+                                                                source_size);
+        cudaDeviceSynchronize();
+        CudaCheckError();
+
+        MotionTrackingData* d = mtd;
+
+        JtJ << double(d->JtJ[0]), double(d->JtJ[1]), double(d->JtJ[2]), double(d->JtJ[3]), double(d->JtJ[4]), double(d->JtJ[5]),
+               double(d->JtJ[1]), double(d->JtJ[6]), double(d->JtJ[7]), double(d->JtJ[8]), double(d->JtJ[9]), double(d->JtJ[10]),
+               double(d->JtJ[2]), double(d->JtJ[7]), double(d->JtJ[11]), double(d->JtJ[12]), double(d->JtJ[13]), double(d->JtJ[14]),
+               double(d->JtJ[3]), double(d->JtJ[8]), double(d->JtJ[12]), double(d->JtJ[15]), double(d->JtJ[16]), double(d->JtJ[17]),
+               double(d->JtJ[4]), double(d->JtJ[9]), double(d->JtJ[13]), double(d->JtJ[16]), double(d->JtJ[18]), double(d->JtJ[19]),
+               double(d->JtJ[5]), double(d->JtJ[10]), double(d->JtJ[14]), double(d->JtJ[17]), double(d->JtJ[19]), double(d->JtJ[20]);
+        Jtr << double(d->Jtr[0]), double(d->Jtr[1]), double(d->Jtr[2]), double(d->Jtr[3]), double(d->Jtr[4]), double(d->Jtr[5]);
+        double error = double(d->r);
+        float inliers = d->inliers;
+
+        if(inliers < 100.0f)
+        {
+            std::cout<<" In ICP, number of matches is too small!   nb matches = "<<inliers<<std::endl;
+            valid = false;
+            break;
+        }
+
+        for(size_t i = 0; i < source_features3D.size(); i++)
+        {
+            float3 ps = R_corres * source_features3D[i] + t_corres;
+            float3 pt = target_features3D[i];
+            float3 diff = pt - ps;
+            float dist = length(diff);
+
+            if(dist < 0.02f)
+            {
+                float3 sum = pt + ps;
+
+                float w = 1.0f;
+
+                J_features << 1.0, 0.0, 0.0, 0.0f, double(-sum.z), double(sum.y),
+                              0.0, 1.0, 0.0, double(ps.z), 0.0f, double(-sum.x),
+                              0.0, 0.0, 1.0, double(-sum.y), double(sum.x), 0.0f;
+                Jtr += w * J_features.transpose() * Eigen::Vector3d(double(diff.x), double(diff.y), double(diff.z));
+                JtJ += w * J_features.transpose() * J_features;
+            }
+        }
+
+        Xp = JtJ.ldlt().solve(Jtr);
+
+        Eigen::Vector3d tran(Xp(3), Xp(4), Xp(5));
+        Eigen::Vector3d rot_axis(Xp(0), Xp(1), Xp(2));
+
+        double rot_axis_norm = rot_axis.norm();
+        double rot_angle = 0.5f * std::atan(rot_axis_norm);
+        rot_axis /= rot_axis_norm;
+        tran *= std::cos(rot_angle);
+
+        Eigen::Isometry3d iso_rot(Eigen::AngleAxisd(rot_angle, rot_axis));
+        Eigen::Isometry3d iso_iter = iso_rot * Eigen::Isometry3d(Eigen::Translation3d(tran)) * iso_rot;
+
+        tf_iter << iso_iter.matrix()(0, 0), iso_iter.matrix()(0, 1), iso_iter.matrix()(0, 2), iso_iter.matrix()(0, 3),
+                   iso_iter.matrix()(1, 0), iso_iter.matrix()(1, 1), iso_iter.matrix()(1, 2), iso_iter.matrix()(1, 3),
+                   iso_iter.matrix()(2, 0), iso_iter.matrix()(2, 1), iso_iter.matrix()(2, 2), iso_iter.matrix()(2, 3),
+                   0.0f, 0.0f, 0.0f, 1.0f;
+        tf_iter.block<3,3>(0,0) = Eigen::Quaterniond(tf_iter.block<3,3>(0,0)).normalized().toRotationMatrix();
+
+        tf_inc = tf_iter * tf_inc;
+
+        if(error / prev_error > 0.9999)
+            break;
+
+        prev_error = error;
+    }
+
+    Eigen::MatrixXd pose_covariance = JtJ.cast<double>().lu().inverse();
+
+    for(unsigned int i = 0; i < 6; i++)
+    {
+        if(pose_covariance(i, i) > covThresh)
+        {
+            valid = false;
+            break;
+        }
+    }
+
+    if(valid)
+    {
+        if(length(t_inc) > 0.3f)
+            valid = false;
+        else
+        {
+            Eigen::Matrix3f basis = tf_inc.block<3,3>(0,0).cast<float>();
+            R_inc = make_mat33(basis(0,0), basis(0,1), basis(0,2),
+                               basis(1,0), basis(1,1), basis(1,2),
+                               basis(2,0), basis(2,1), basis(2,2));
+            Eigen::Vector3f origin = tf_inc.block<3,1>(0,3).cast<float>();
+            t_inc = make_float3(origin(0), origin(1), origin(2));
+
             R = transpose(R_inc);
             t = -R * t_inc;
         }
