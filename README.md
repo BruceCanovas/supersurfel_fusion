@@ -9,7 +9,11 @@ Check out the video:
 
 ## Related Publications ##
 
-Please cite this publication when using SupersurfelFusion: +TODO
+The system is strongly based on the following paper:
+
+"Speed and Memory Efficient Dense RGB-D SLAM in Dynamic Scenes, Bruce Canovas, Michele Rombaut, Amaury Negre, Denis Pellerin and Serge Olympieff,  Proc. IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS 2020), Las Vegas, USA (2020)."
+
+Please cite this publication when using SupersurfelFusion.
 
 Note that the software is experimental and some changes have been done since the publication of the paper. For instance in the part performing moving object detection and removal, we add the possibility to use a lightweight deep learning based object detection to extract humans and improve the robustness against dynamic elements. 
 
