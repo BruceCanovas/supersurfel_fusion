@@ -35,7 +35,7 @@
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
 #define N_PASSES 2
-#define REPROJECTION_TH2 5.0
+#define REPROJECTION_TH2 5.991
 
 
 namespace supersurfel_fusion
