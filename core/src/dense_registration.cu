@@ -347,7 +347,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
             float3 diff = pt - ps;
             float dist = length(diff);
 
-            if(dist < 0.02f)
+            if(dist < 0.01f)
             {
                 float3 sum = pt + ps;
 
