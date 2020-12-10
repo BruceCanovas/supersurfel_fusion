@@ -264,7 +264,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
                         float3 pm =  make_float3(pos(0), pos(1), pos(2));
                         float dist = length(R_view * pm + t_view - pf);
 
-                        if(dist <= 0.02f)
+                        if(dist <= 0.01f)
                         {
                             map_features3D_h.push_back(pm);
                             frame_features3D_h.push_back(pf);
@@ -285,7 +285,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
             int new_size = map_features3D_h.size();
             if(new_size >= 30)
-                new_size /= 3;
+                new_size /= 4;
 
             map_features3D.resize(new_size);
             frame_features3D.resize(new_size);
@@ -293,23 +293,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
             map_features3D_h = map_features3D;
             frame_features3D_h = frame_features3D;
         }
-
-//        std::cout<<"Nb feature constraints = "<<map_features3D_h.size()<<std::endl;
-//                                      model.colors,
-//                                      model.orientations,
-//                                      model.confidences,
-//                                      frame.positions,
-//                                      frame.colors,
-//                                      frame.orientations,
-//                                      frame.confidences,
-//                                      nbVisible,
-//                                      texDepth,
-//                                      tps->getTexIndex(),
-//                                      R_view,
-//                                      t_view,
-//                                      cam,
-//                                      R_rel,
-//                                      t_rel);
+        
         bool icp_success = icp->featureConstrainedSymmetricICP(model.positions,
                                                                model.colors,
                                                                model.orientations,
