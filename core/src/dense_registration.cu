@@ -330,7 +330,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
                double(d->JtJ[4]), double(d->JtJ[9]), double(d->JtJ[13]), double(d->JtJ[16]), double(d->JtJ[18]), double(d->JtJ[19]),
                double(d->JtJ[5]), double(d->JtJ[10]), double(d->JtJ[14]), double(d->JtJ[17]), double(d->JtJ[19]), double(d->JtJ[20]);
         Jtr << double(d->Jtr[0]), double(d->Jtr[1]), double(d->Jtr[2]), double(d->Jtr[3]), double(d->Jtr[4]), double(d->Jtr[5]);
-        double error = double(d->r);
+        double error = std::sqrt(double(d->r / d->inliers));
         float inliers = d->inliers;
 
         if(inliers < 100.0f)
@@ -347,7 +347,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
             float3 diff = pt - ps;
             float dist = length(diff);
 
-            if(dist < 0.01f)
+            if(dist < error && dist < 0.05f)
             {
                 float3 sum = pt + ps;
 
@@ -382,7 +382,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
 
         tf_inc = tf_iter * tf_inc;
 
-        if(error / prev_error > 0.9999)
+        if(error / prev_error > 0.9995)
             break;
 
         prev_error = error;
