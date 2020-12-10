@@ -241,7 +241,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
         thrust::host_vector<float3> map_features3D_h, frame_features3D_h;
         
-        if(vo_success)
+        /*if(vo_success)
         {
             const std::vector<int> & inlier_marks = vo->getInlierMarks();
             thrust::host_vector<float> dist_h;
@@ -264,7 +264,7 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
                         float3 pm =  make_float3(pos(0), pos(1), pos(2));
                         float dist = length(R_view * pm + t_view - pf);
 
-                        if(dist <= 0.01f)
+                        if(dist <= 0.04f)
                         {
                             map_features3D_h.push_back(pm);
                             frame_features3D_h.push_back(pf);
@@ -285,14 +285,14 @@ void SupersurfelFusion::processFrame(const cv::Mat& rgb_h,
 
             int new_size = map_features3D_h.size();
             if(new_size >= 30)
-                new_size /= 4;
+                new_size /= 3;
 
             map_features3D.resize(new_size);
             frame_features3D.resize(new_size);
 
             map_features3D_h = map_features3D;
             frame_features3D_h = frame_features3D;
-        }
+        }*/
         
         bool icp_success = icp->featureConstrainedSymmetricICP(model.positions,
                                                                model.colors,
