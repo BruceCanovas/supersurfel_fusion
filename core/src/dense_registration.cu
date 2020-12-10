@@ -354,7 +354,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
                 float w = 1.0f;
 
                 J_features << 1.0, 0.0, 0.0, 0.0f, double(-sum.z), double(sum.y),
-                              0.0, 1.0, 0.0, double(ps.z), 0.0f, double(-sum.x),
+                              0.0, 1.0, 0.0, double(sum.z), 0.0f, double(-sum.x),
                               0.0, 0.0, 1.0, double(-sum.y), double(sum.x), 0.0f;
                 Jtr += w * J_features.transpose() * Eigen::Vector3d(double(diff.x), double(diff.y), double(diff.z));
                 JtJ += w * J_features.transpose() * J_features;
