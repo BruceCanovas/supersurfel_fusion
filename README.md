@@ -118,7 +118,7 @@ $ roslaunch supersurfel_fusion supersurfel_fusion_realsense_rviz.launch
 
 ### Run with rosbag or other RGB-D sensors ###
 
-To use SupersurfelFusion with other devices you just need to remap the `/camera_info`, `/image_color` and `/image_depth` topics in the supersurfel_fusion_rviz.launch to the topics published by your sensor or bagfile. Then start your device on ROS with registered RGB-D stream, or play your rosbag and execute:
+To use SupersurfelFusion with other devices you just need to remap the `/camera_info`, `/image_color` and `/image_depth` topics in the supersurfel_fusion_rviz.launch to the topics published by your sensor or bagfile. The launch file is set assuming depth data in meter. If your depth is given in millimeter you will need to change the parameter `depth_scale` from 1.0 to 0.001. Then start your device on ROS with registered RGB-D stream, or play your rosbag and execute:
 ```
 $ roslaunch supersurfel_fusion supersurfel_fusion_rviz.launch
 ```
