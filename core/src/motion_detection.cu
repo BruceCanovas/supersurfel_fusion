@@ -549,7 +549,7 @@ void MotionDetection::detectMotionSimple(const cv::Mat& gray,
             }
         }
 
-        float flow_thresh = 2.0f + 0.5f * std::sqrt(H.at<float>(0, 2) * H.at<float>(0, 2)  + H.at<float>(1, 2) * H.at<float>(1, 2));
+        float flow_thresh = 2.5f + 0.5f * std::sqrt(H.at<float>(0, 2) * H.at<float>(0, 2)  + H.at<float>(1, 2) * H.at<float>(1, 2));
 
         for(int i = 0; i < nb_clusters; i++)
         {
@@ -758,7 +758,7 @@ void MotionDetection::detectMotionCombined(const cv::Mat& rgb,
                     float3 c_ij =  (positions[i] - positions[j]) / length(positions[i] - positions[j]);
                     float geometric_dist = (length(cross(n_i, n_j)) + fabsf(dot(n_i, c_ij)) + fabsf(dot(n_j, c_ij))) / 3.0f;
 
-                    if(geometric_dist < 0.1f)
+                    if(geometric_dist < 0.2f)
                         adjacency_list[i].push_back(j);
                 }
 
@@ -786,12 +786,24 @@ void MotionDetection::detectMotionCombined(const cv::Mat& rgb,
             int i = std::min(int(obj.x + obj.w / 2), index_mat_h.cols - 1);
             int j = std::min(int(obj.y + obj.h / 2), index_mat_h.rows - 1);
             int seed = index_mat_h.at<int>(j, i);
+            
+            for(size_t n = 0; n < adjacency_list_all[seed].size(); n++)
+            {
+                if((positions[seed].z > positions[adjacency_list_all[seed][n]].z || confidences[seed] < 0.0f) &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.x >= obj.x &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.x < obj.x + obj.w &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.y >= obj.y &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.y < obj.y + obj.h)
+                      seed = adjacency_list_all[seed][n];
+            }
 
 //            float3 seed_color = make_float3(superpixels_h[seed].xy_rg.z,
 //                                            superpixels_h[seed].xy_rg.w,
 //                                            superpixels_h[seed].theta_b.w);
             isStatic[seed] = false;
             visited[seed] = true;
+            
+            float z_seed = positions[seed].z;
 
             ff_stack.push(adjacency_list_all[seed]);
 
@@ -814,8 +826,8 @@ void MotionDetection::detectMotionCombined(const cv::Mat& rgb,
                         //float lab_dist = length(rgbToLab(seed_color) - rgbToLab(neighbour_color));
 
                         float depth_dist = 1000.0f;
-                        if(confidences[seed] && confidences[neighbours[k]])
-                            depth_dist = std::abs(positions[seed].z - positions[neighbours[k]].z);
+                        if(confidences[neighbours[k]])
+                            depth_dist = std::abs(z_seed - positions[neighbours[k]].z);
 
                         if(/*lab_dist < 3.0f || */depth_dist < 0.3f)
                         {
@@ -1037,7 +1049,7 @@ void MotionDetection::detectMotionCombined(const cv::Mat& rgb,
             }
         }
 
-        float flow_thresh = 2.0f + 0.5f * std::sqrt(H.at<float>(0, 2) * H.at<float>(0, 2)  + H.at<float>(1, 2) * H.at<float>(1, 2));
+        float flow_thresh = 4.0f + 0.5f * std::sqrt(H.at<float>(0, 2) * H.at<float>(0, 2)  + H.at<float>(1, 2) * H.at<float>(1, 2));
 
         for(int i = 0; i < nb_clusters; i++)
         {
@@ -1186,9 +1198,21 @@ void MotionDetection::detectMotionYoloOnly(const cv::Mat& rgb,
             int j = std::min(int(obj.y + obj.h / 2), index_mat_h.rows - 1);
             int seed = index_mat_h.at<int>(j, i);
 
+            for(size_t n = 0; n < adjacency_list_all[seed].size(); n++)
+            {
+                if((positions[seed].z > positions[adjacency_list_all[seed][n]].z || confidences[seed] < 0.0f) &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.x >= obj.x &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.x < obj.x + obj.w &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.y >= obj.y &&
+                   superpixels_h[adjacency_list_all[seed][n]].xy_rg.y < obj.y + obj.h)
+                      seed = adjacency_list_all[seed][n];
+            }
+            
             float3 seed_color = make_float3(superpixels_h[seed].xy_rg.z,
                                             superpixels_h[seed].xy_rg.w,
                                             superpixels_h[seed].theta_b.w);
+            float z_seed = positions[seed].z;
+            
             isStatic[seed] = false;
             visited[seed] = true;
 
@@ -1213,8 +1237,8 @@ void MotionDetection::detectMotionYoloOnly(const cv::Mat& rgb,
                         float lab_dist = length(rgbToLab(seed_color) - rgbToLab(neighbour_color));
 
                         float depth_dist = 1000.0f;
-                        if(confidences[seed] && confidences[neighbours[k]])
-                            depth_dist = std::abs(positions[seed].z - positions[neighbours[k]].z);
+                        if(confidences[neighbours[k]])
+                            depth_dist = std::abs(z_seed - positions[neighbours[k]].z);
 
                         if(/*lab_dist < 3.0f || */depth_dist < 0.3f)
                         {
