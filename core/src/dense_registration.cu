@@ -347,15 +347,18 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
             float3 diff = pt - ps;
             float dist = length(diff);
 
-            if(dist < error && dist < 0.04f)
+            if(dist < error && dist < 0.02f)
             {
                 float3 sum = pt + ps;
 
                 float w = 1.0f;
 
-                J_features << 1.0, 0.0, 0.0, 0.0f, double(-sum.z), double(sum.y),
+                /*J_features << 1.0, 0.0, 0.0, 0.0f, double(-sum.z), double(sum.y),
                               0.0, 1.0, 0.0, double(sum.z), 0.0f, double(-sum.x),
-                              0.0, 0.0, 1.0, double(-sum.y), double(sum.x), 0.0f;
+                              0.0, 0.0, 1.0, double(-sum.y), double(sum.x), 0.0f;*/
+                J_features <<  0.0f, double(-sum.z), double(sum.y), 1.0, 0.0, 0.0,
+                               double(sum.z), 0.0f, double(-sum.x), 0.0, 1.0, 0.0,
+                               double(-sum.y), double(sum.x), 0.0f, 0.0, 0.0, 1.0;
                 Jtr += w * J_features.transpose() * Eigen::Vector3d(double(diff.x), double(diff.y), double(diff.z));
                 JtJ += w * J_features.transpose() * J_features;
             }
@@ -401,7 +404,7 @@ bool DenseRegistration::featureConstrainedSymmetricICP(const thrust::device_vect
 
     if(valid)
     {
-        if(length(t_inc) > 0.3f)
+        if(length(t_inc) > 0.2f)
             valid = false;
         else
         {
