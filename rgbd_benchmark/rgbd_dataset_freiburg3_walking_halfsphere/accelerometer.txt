@@ -1,3 +1,0 @@
-# accelerometer data
-# file: 'rgbd_dataset_freiburg3_walking_halfsphere.bag'
-# timestamp ax ay az
