@@ -138,7 +138,8 @@ $ roslaunch supersurfel_fusion supersurfel_fusion.launch
 ```
 $ roslaunch supersurfel_fusion supersurfel_fusion_rgbd_benchmark.launch
 ```
-We provide two sequences in `supersurfel_fusion/rgbd_benchmark` that can be specified  in the `supersurfel_fusion_rgbd_benchmark.launch` launch file. When using this launch file, SupersurfelFusion processes every frame and can be played/paused anytime by checking the "stop" boxe of the rqt_reconfigure window that popped up. Estimated and ground truth trajectories are displayed in Rviz and the estimation is saved (location can be specified in the launch file) so it can be used for evaluation with [tools](https://vision.in.tum.de/data/datasets/rgbd-dataset/tools#evaluation) provided by the TUM. 
+To use the system with the TUM video sequences the downloaded datasets have to be put inside the `rgbd_benchmark` directory. Then the python script `associate.py` has to be used twice: first to generate a file associating rgb and depth data with regard to their timestamps, then to associate groundtruth trajectory data with the previously generated file. The final file should be named `associations_with_gt.txt`, inside the dataset repository.
+When using this `supersurfel_fusion_rgbd_benchmark.launch` launch file, SupersurfelFusion processes every frame and can be played/paused anytime by checking the "stop" boxe of the rqt_reconfigure window that popped up. Estimated and ground truth trajectories are displayed in Rviz and the estimation is saved (location can be specified in the launch file) so it can be used for evaluation with [tools](https://vision.in.tum.de/data/datasets/rgbd-dataset/tools#evaluation) provided by the TUM. 
 
 ### Node ###
 
